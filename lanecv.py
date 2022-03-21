@@ -3,6 +3,7 @@ import numpy as np
 import cv2 as cv
 import time
 
+
 class lanecv:
     def lane_process(self,img):
         img=cv.cvtColor(img,cv.COLOR_BGR2GRAY)
