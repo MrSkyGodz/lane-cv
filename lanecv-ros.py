@@ -5,12 +5,24 @@ import time
 
 import rospy
 from sensor_msgs.msg import Image
+from geometry_msgs.msg import Twist
+from std_msgs.msg import Float32
+from cv_bridge import CvBridge
 
 class lanecv:
-    def __init__(self):
+    def __init__(self,camera = "left"):
+        if(camera == "left"):
+            self.camera = -1
+        elif(camera == "right"):
+            self.camera = 1        
+        self.points = []
 
-        rospy.init_node("Lane-finder")
-        rospy.Subscriber("/counter", Image ,self.callback)    
+        rospy.init_node("lane_finder")
+        self.bridge = CvBridge()
+
+        self.pub_edge = rospy.Publisher("/edge_" + camera, Image, queue_size=1)
+
+        rospy.Subscriber("/camera/" + camera + "/image_raw", Image ,self.callback)   
         rospy.spin()
 
     def callback(self, msg):
@@ -18,10 +30,14 @@ class lanecv:
         img = np.frombuffer(msg.data, dtype=np.uint8).reshape(msg.height, msg.width,-1)
         edge = self.run(img)
 
+        edge_msg = Image()
+        edge_msg = self.bridge.cv2_to_imgmsg(edge, encoding="passthrough")
+        self.pub_edge.publish(edge_msg)
 
-        cv.imshow("edge",edge)
-        cv.waitKey(0)
-        cv.destroyAllWindows()
+
+        # cv.imshow("edge",edge)
+        # cv.waitKey(0)
+        # cv.destroyAllWindows()
 
     def lane_process(self,img):
         img=cv.cvtColor(img,cv.COLOR_BGR2GRAY)
@@ -42,17 +58,27 @@ class lanecv:
         return divided
 
     def moment(self,img,edge):
+        self.points = []
         h,w=edge.shape
         four=h//4
         edge_list=self.divide(edge)
         for x in range(4):
             try:
+                
                 M = cv.moments(edge_list[x])
                 cX = int(M["m10"] / M["m00"])
                 cY = int(M["m01"] / M["m00"])
+                if(self.camera == -1):
+                    cX_camera = cX
+                elif(self.camera == 1):
+                    cX_camera = w-cX
+                
+                self.points.append([x,cX_camera/w,cY/h])
+                
                 cv.circle(img, (cX, cY+four*x), 10, (255, 0, 0), -1)  
-                cv.putText(img, str(cX), (cX - 25, cY+four*x - 25),cv.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
+                cv.putText(img, "%0.3f"%(cX_camera/w), (cX - 25, cY+four*x - 25),cv.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
             except:
+                # print(x)
                 pass
         return img
 
@@ -64,7 +90,7 @@ class lanecv:
 
 
 def main():
-    lane = lanecv()
+    lane = lanecv(camera= "right")
 
 if __name__ == "__main__" :
     main()
